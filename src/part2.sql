@@ -1,13 +1,11 @@
---==========================================================---
------------------------ PART 2 task 1 -------------------------
---==========================================================---
--- Написать процедуру добавления P2P проверки
--- Параметры: ник проверяемого, ник проверяющего, название задания, статус P2P проверки, время.
--- Если задан статус "начало", добавить запись в таблицу Checks (в качестве даты использовать сегодняшнюю).
--- Добавить запись в таблицу P2P.
--- Если задан статус "начало", в качестве проверки указать только что добавленную запись,
--- иначе указать проверку с незавершенным P2P этапом.
----------------------------------------------------------------
+/* 1) Write a procedure for adding P2P check
+   Parameters: nickname of the person being checked, checker's nickname, 
+   task name, [P2P check status]( #check-status), time. If the status is 
+   "start", add a record in the Checks table (use today's date). Add a 
+   record in the P2P table. If the status is "start", specify the record 
+   just added as a check, otherwise specify the check with the unfinished 
+   P2P step. */
+
 CREATE OR REPLACE PROCEDURE pr_add_p2p_check(
     new_checked_peer  text,
     new_checking_peer text,
@@ -66,9 +64,6 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
--------------------------------------------------------------------------------------------
--- TEST CASES
--------------------------------------------------------------------------------------------
 -- test for duplicate check
 DO $$ DECLARE err_msg text; BEGIN
     TRUNCATE checks, p2p RESTART IDENTITY CASCADE;
@@ -95,15 +90,12 @@ CALL pr_add_p2p_check('darrpama', 'myregree', 'C2_SimpleBashUtils', 'success'::c
 SELECT * FROM p2p;
 SELECT * FROM checks;
 
+/* 2) Write a procedure for adding checking by Verter
+   Parameters: nickname of the person being checked, task name, [Verter 
+   check status](#check-status), time. Add a record to the Verter table 
+   (as a check specify the check of the corresponding task with the latest 
+   (by time) successful P2P step) */
 
---==========================================================---
------------------------ PART 2 task 2 -------------------------
---==========================================================---
--- Написать процедуру добавления проверки Verter'ом
--- Параметры: ник проверяемого, название задания, статус проверки Verter'ом, время.
--- Добавить запись в таблицу Verter (в качестве проверки указать проверку соответствующего
--- задания с самым поздним (по времени) успешным P2P этапом)
----------------------------------------------------------------
 CREATE OR REPLACE PROCEDURE pr_add_verter_check(
     new_checked_peer text,
     new_task_title   text,
@@ -140,9 +132,6 @@ CREATE OR REPLACE PROCEDURE pr_add_verter_check(
     END
 $$ LANGUAGE plpgsql;
 
--------------------------------------------------------------------------------------------
--- TEST CASES
--------------------------------------------------------------------------------------------
 -- FAILURE CASE: p2p must be success
 DO $$ DECLARE err_msg text; BEGIN
     TRUNCATE checks, p2p, verter RESTART IDENTITY CASCADE;
@@ -199,12 +188,9 @@ SELECT * FROM checks;
 SELECT * FROM verter;
 
 
---==========================================================---
------------------------ PART 2 task 3 -------------------------
---==========================================================---
--- Написать триггер: после добавления записи со статутом "начало" в таблицу P2P,
--- изменить соответствующую запись в таблице TransferredPoints
----------------------------------------------------------------
+/* 3) Write a trigger: after adding a record with the "start" status to the P2P 
+   table, change the corresponding record in the TransferredPoints table */
+
 CREATE OR REPLACE FUNCTION fn_transfer_p2p_point() RETURNS TRIGGER AS
 $$
     DECLARE
@@ -242,9 +228,7 @@ DROP TRIGGER IF EXISTS trg_transfer_p2p_point ON p2p;
 CREATE TRIGGER trg_transfer_p2p_point AFTER INSERT ON p2p FOR EACH ROW
 EXECUTE FUNCTION fn_transfer_p2p_point();
 
--------------------------------------------------------------------------------------------
--- TEST CASES
--------------------------------------------------------------------------------------------
+-- test
 DO $$ DECLARE tp_count bigint; BEGIN
     TRUNCATE checks, p2p, verter, xp, transferred_points RESTART IDENTITY CASCADE;
     CALL pr_add_p2p_check('darrpama', 'myregree', 'C7_SmartCalc_v1.0', 'start'::check_state, '15:30:01');
@@ -256,13 +240,14 @@ DO $$ DECLARE tp_count bigint; BEGIN
     END IF;
 END; $$;
 
+/* 4) Write a trigger: before adding a record to the XP table, check 
+   if it is correct 
+   The record is considered correct if:
+   - The number of XP does not exceed the maximum available for the 
+   task being checked
+   - The Check field refers to a successful check
+   If the record does not pass the check, do not add it to the table. */
 
---==========================================================---
------------------------ PART 2 task 4 -------------------------
---==========================================================---
--- Написать триггер: перед добавлением записи в таблицу XP,
--- проверить корректность добавляемой записи
----------------------------------------------------------------
 CREATE OR REPLACE FUNCTION fn_trg_xp_max() RETURNS TRIGGER AS $xp$
     DECLARE
         maxXp         INT  := (SELECT max_xp FROM tasks INNER JOIN checks c on tasks.title LIKE c.task WHERE c.id = NEW.check_id);
@@ -288,9 +273,6 @@ CREATE TRIGGER trg_xp_max
     BEFORE INSERT OR UPDATE ON xp
     FOR EACH ROW EXECUTE PROCEDURE fn_trg_xp_max();
 
--------------------------------------------------------------------------------------------
--- TEST CASES
--------------------------------------------------------------------------------------------
 --  check is not isset  -- should FAIL
 DO $$ DECLARE err_msg text; BEGIN
     TRUNCATE checks, p2p, verter, xp, transferred_points RESTART IDENTITY CASCADE;
